@@ -1,0 +1,24 @@
+groups:
+  - name: latency_rule
+    rules:
+      - alert: HighLatency
+        expr: histogram_quantile(0.9, rate(django_request_latency_seconds_bucket[5m])) > 0.4
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая задержка запросов, P90 > 0.4 сек" 
+          description: "Уже 1 минуту P90 превышает 0.4 сек. Проверьте эндпоинты."
+  
+
+# alert на перезапуск 
+  - name: restart_service
+    rules:
+      - alert: HighLatency
+        expr:  histogram_quantile(0.9, rate(django_request_latency_seconds_bucket[5m])) > 0.6
+        for : 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Высокая задержка запросов, P90 > 0.6 сек"
+          description: "Уже 1 минуту P90 превышает 0.6 сек."

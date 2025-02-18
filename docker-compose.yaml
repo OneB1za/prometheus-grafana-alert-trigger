@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  django-prom:
+    image: django-prom:latest
+    container_name: django-github-app
+    ports:
+      - "8000:8000"
+    networks:
+      - prom-net
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus 
+    volumes:
+      - ./prometheus/:/etc/prometheus/ # Локальная папка ./prometheus/ на хосте монтируется в /etc/prometheus/ внутри контейнера
+      - prometheus_data:/prometheus # Позволяет сохранять базу данных временных рядов (TSDB)
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml' # указывает прометеусу где искать конфигурационный файл
+      - '--storage.tsdb.path=/prometheus' # путь для хранения метрик
+      - '--web.console.libraries=/etc/prometheus/console_libraries' # путь к библиотекам консоли прометеуса
+      - '--web.console.templates=/etc/prometheus/consoles' # путь к шаблонам консоли прометеуса
+      - '--storage.tsdb.retention.time=100h' # задаёт сколько часов Prometheus должен хранить метрики, прежде чем удалить старые данные
+      - '--web.enable-lifecycle' # Разрешает динамическую перезагрузку конфигурации Prometheus (без перезапуска контейнера) через 
+                                 #curl -X POST http://localhost:9090/-/reload
+
+    ports:
+      - "9090:9090"
+    networks:
+      - prom-net 
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    user: root
+    privileged: true
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    restart: unless-stopped
+    expose:
+      - 9100
+    depends_on:
+      - prometheus
+    networks:
+      - prom-net
+    
+
+  grafana:
+    image: grafana/grafana-enterprise:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana #   # Дашборды и настройки
+      - grafana_logs:/var/log/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - prom-net
+    depends_on:
+      - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    volumes:
+      - ./alertmanager/:/etc/alertmanager/
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    ports:
+      - "9093:9093"
+    networks:
+      - prom-net
+
+
+networks:
+  prom-net:
+    driver: bridge
+
+volumes:
+  grafana-storage: 
+  prometheus_data: 
+  grafana_logs:
